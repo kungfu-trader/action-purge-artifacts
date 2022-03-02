@@ -7,4 +7,4 @@ const argv = require('yargs/yargs')(process.argv.slice(2))
   .option('expire-in', { default: '14days', description: 'Human readable expire duration', type: 'string' })
   .help().argv;
 
-lib.purgeArtifacts(argv.token, argv.owner);
+lib.purgeArtifacts(argv.token, argv.owner).catch(console.error);

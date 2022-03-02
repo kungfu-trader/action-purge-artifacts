@@ -6,14 +6,58 @@
 
 /* eslint-disable no-restricted-globals */
 const github = __nccwpck_require__(5438);
+const differenceInMilliseconds = __nccwpck_require__(2288);
 const fs = __nccwpck_require__(7147);
 const path = __nccwpck_require__(1017);
 const { Octokit } = __nccwpck_require__(6762);
 const { restEndpointMethods } = __nccwpck_require__(3044);
 const parseDuration = __nccwpck_require__(3805);
 
+function shouldDelete(artifact, actionInputs) {
+  const { expireInMs, onlyPrefix, exceptPrefix } = actionInputs;
+
+  const included = onlyPrefix === '' || artifact.name.startsWith(onlyPrefix);
+  const excluded = exceptPrefix && artifact.name.startsWith(exceptPrefix);
+  const expired = differenceInMilliseconds(new Date(), new Date(artifact.created_at)) >= expireInMs;
+
+  return included && !excluded && expired;
+}
+
+async function* eachArtifact(octokit, owner, repo) {
+  let hasNextPage = false;
+  let currentPage = 1;
+  const maxPerPage = 100;
+  do {
+    const response = await octokit.rest.actions.listArtifactsForRepo({
+      owner: owner,
+      repo: repo,
+      page: currentPage,
+      per_page: maxPerPage,
+    });
+    hasNextPage = response.data.total_count / maxPerPage > currentPage;
+    for (const artifact of response.data.artifacts) {
+      yield artifact;
+    }
+    currentPage++;
+  } while (hasNextPage);
+}
+
+/*
+  We need to create our own github client because @actions/core still uses
+  old version of @octokit/plugin-rest-endpoint-methods which doesn't have
+  `.listArtifactsForRepo`. This won't be needed when @actions/core gets updated
+  This ---------------> https://github.com/actions/toolkit/blob/master/packages/github/package.json#L42
+                        https://github.com/octokit/rest.js/blob/master/package.json#L38
+  Needs to use this  -> https://github.com/octokit/plugin-rest-endpoint-methods.js/pull/45
+*/
+const getOctokit = (token) => {
+  const _Octokit = Octokit.plugin(restEndpointMethods);
+  return new _Octokit({ auth: token });
+};
+
 exports.purgeArtifacts = async function (token, owner) {
-  const octokit = github.getOctokit(token);
+  const octokit = getOctokit(token);
+  const deletedArtifacts = [];
   const repositoriesQuery = await octokit.graphql(`
     query {
       organization(login: "${owner}") {
@@ -28,9 +72,28 @@ exports.purgeArtifacts = async function (token, owner) {
       }
     }`);
   for (const repository of repositoriesQuery.organization.repositories.nodes) {
-    const repoDiskUsage = repository.diskUsage / 2 ** 20;
-    console.log(`> purging for repository ${repository.name} (${repoDiskUsage.toFixed(2)} MB)`);
+    const repoDiskUsageKB = repository.diskUsage;
+    const repoDiskUsageMB = repository.diskUsage / 2 ** 10;
+    const repoDiskUsageGB = repository.diskUsage / 2 ** 20;
+    const unit = repoDiskUsageGB > 1 ? 'GB' : repoDiskUsageMB > 1 ? 'MB' : 'KB';
+    const repoDiskUsage =
+      repoDiskUsageGB > 1 ? repoDiskUsageGB : repoDiskUsageMB > 1 ? repoDiskUsageMB : repoDiskUsageKB;
+    console.log(`> purging for repository ${repository.name} (${repoDiskUsage.toFixed(0)} ${unit})`);
+
+    for await (const artifact of eachArtifact(octokit, owner, repository.name)) {
+      console.log(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
+      // if (shouldDelete(artifact, actionInputs)) {
+      //   deletedArtifacts.push(artifact);
+      //   core.debug(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
+      //   await octokit.actions.deleteArtifact({
+      //     owner: owner,
+      //     repo: repository,
+      //     artifact_id: artifact.id,
+      //   });
+      // }
+    }
   }
+  core.setOutput('deleted-artifacts', JSON.stringify(deletedArtifacts));
 };
 
 
@@ -3995,6 +4058,149 @@ function removeHook(state, name, method) {
   state.registry[name].splice(index, 1);
 }
 
+
+/***/ }),
+
+/***/ 2063:
+/***/ ((module, exports) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports["default"] = requiredArgs;
+
+function requiredArgs(required, args) {
+  if (args.length < required) {
+    throw new TypeError(required + ' argument' + (required > 1 ? 's' : '') + ' required, but only ' + args.length + ' present');
+  }
+}
+
+module.exports = exports.default;
+
+/***/ }),
+
+/***/ 2288:
+/***/ ((module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports["default"] = differenceInMilliseconds;
+
+var _index = _interopRequireDefault(__nccwpck_require__(6477));
+
+var _index2 = _interopRequireDefault(__nccwpck_require__(2063));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * @name differenceInMilliseconds
+ * @category Millisecond Helpers
+ * @summary Get the number of milliseconds between the given dates.
+ *
+ * @description
+ * Get the number of milliseconds between the given dates.
+ *
+ * ### v2.0.0 breaking changes:
+ *
+ * - [Changes that are common for the whole library](https://github.com/date-fns/date-fns/blob/master/docs/upgradeGuide.md#Common-Changes).
+ *
+ * @param {Date|Number} dateLeft - the later date
+ * @param {Date|Number} dateRight - the earlier date
+ * @returns {Number} the number of milliseconds
+ * @throws {TypeError} 2 arguments required
+ *
+ * @example
+ * // How many milliseconds are between
+ * // 2 July 2014 12:30:20.600 and 2 July 2014 12:30:21.700?
+ * const result = differenceInMilliseconds(
+ *   new Date(2014, 6, 2, 12, 30, 21, 700),
+ *   new Date(2014, 6, 2, 12, 30, 20, 600)
+ * )
+ * //=> 1100
+ */
+function differenceInMilliseconds(dateLeft, dateRight) {
+  (0, _index2.default)(2, arguments);
+  return (0, _index.default)(dateLeft).getTime() - (0, _index.default)(dateRight).getTime();
+}
+
+module.exports = exports.default;
+
+/***/ }),
+
+/***/ 6477:
+/***/ ((module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports["default"] = toDate;
+
+var _index = _interopRequireDefault(__nccwpck_require__(2063));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * @name toDate
+ * @category Common Helpers
+ * @summary Convert the given argument to an instance of Date.
+ *
+ * @description
+ * Convert the given argument to an instance of Date.
+ *
+ * If the argument is an instance of Date, the function returns its clone.
+ *
+ * If the argument is a number, it is treated as a timestamp.
+ *
+ * If the argument is none of the above, the function returns Invalid Date.
+ *
+ * **Note**: *all* Date arguments passed to any *date-fns* function is processed by `toDate`.
+ *
+ * @param {Date|Number} argument - the value to convert
+ * @returns {Date} the parsed date in the local time zone
+ * @throws {TypeError} 1 argument required
+ *
+ * @example
+ * // Clone the date:
+ * const result = toDate(new Date(2014, 1, 11, 11, 30, 30))
+ * //=> Tue Feb 11 2014 11:30:30
+ *
+ * @example
+ * // Convert the timestamp to date:
+ * const result = toDate(1392098430000)
+ * //=> Tue Feb 11 2014 11:30:30
+ */
+function toDate(argument) {
+  (0, _index.default)(1, arguments);
+  var argStr = Object.prototype.toString.call(argument); // Clone the date
+
+  if (argument instanceof Date || typeof argument === 'object' && argStr === '[object Date]') {
+    // Prevent the date to lose the milliseconds when passed to new Date() in IE10
+    return new Date(argument.getTime());
+  } else if (typeof argument === 'number' || argStr === '[object Number]') {
+    return new Date(argument);
+  } else {
+    if ((typeof argument === 'string' || argStr === '[object String]') && typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn("Starting with v2.0.0-beta.1 date-fns doesn't accept strings as date arguments. Please use `parseISO` to parse strings. See: https://git.io/fjule"); // eslint-disable-next-line no-console
+
+      console.warn(new Error().stack);
+    }
+
+    return new Date(NaN);
+  }
+}
+
+module.exports = exports.default;
 
 /***/ }),
 
