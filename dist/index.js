@@ -13,9 +13,10 @@ const { Octokit } = __nccwpck_require__(6762);
 const { restEndpointMethods } = __nccwpck_require__(3044);
 const parseDuration = __nccwpck_require__(3805);
 
-function shouldDelete(artifact, actionInputs) {
-  const { expireInMs, onlyPrefix, exceptPrefix } = actionInputs;
+const purgeOpts = { dry: false };
 
+function shouldDelete(artifact, expireIn, onlyPrefix, exceptPrefix) {
+  const expireInMs = parseDuration(expireIn);
   const included = onlyPrefix === '' || artifact.name.startsWith(onlyPrefix);
   const excluded = exceptPrefix && artifact.name.startsWith(exceptPrefix);
   const expired = differenceInMilliseconds(new Date(), new Date(artifact.created_at)) >= expireInMs;
@@ -55,7 +56,11 @@ const getOctokit = (token) => {
   return new _Octokit({ auth: token });
 };
 
-exports.purgeArtifacts = async function (token, owner) {
+exports.setOpts = function (argv) {
+  purgeOpts.dry = argv.dry;
+};
+
+exports.purgeArtifacts = async function (token, owner, expireIn, onlyPrefix, exceptPrefix) {
   const octokit = getOctokit(token);
   const deletedArtifacts = [];
   const repositoriesQuery = await octokit.graphql(`
@@ -81,19 +86,22 @@ exports.purgeArtifacts = async function (token, owner) {
     console.log(`> purging for repository ${repository.name} (${repoDiskUsage.toFixed(0)} ${unit})`);
 
     for await (const artifact of eachArtifact(octokit, owner, repository.name)) {
-      console.log(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
-      // if (shouldDelete(artifact, actionInputs)) {
-      //   deletedArtifacts.push(artifact);
-      //   core.debug(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
-      //   await octokit.actions.deleteArtifact({
-      //     owner: owner,
-      //     repo: repository,
-      //     artifact_id: artifact.id,
-      //   });
-      // }
+      console.log(`Checking artifact: ${artifact.name}`);
+      if (shouldDelete(artifact, expireIn, onlyPrefix, exceptPrefix)) {
+        console.log(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
+        if (!purgeOpts.dry) {
+          await octokit.actions.deleteArtifact({
+            owner: owner,
+            repo: repository.name,
+            artifact_id: artifact.id,
+          });
+          deletedArtifacts.push(artifact);
+          console.log(`Deleted artifact:  ${artifact.name}`);
+        }
+      }
     }
   }
-  core.setOutput('deleted-artifacts', JSON.stringify(deletedArtifacts));
+  return deletedArtifacts;
 };
 
 
@@ -8801,6 +8809,16 @@ const main = async function () {
   const context = github.context;
   const token = core.getInput('token');
   const expireIn = core.getInput('expire-in');
+  const onlyPrefix = core.getInput('onlyPrefix', { required: false });
+  const exceptPrefix = core.getInput('exceptPrefix', { required: false });
+  const deletedArtifacts = await lib.purgeArtifacts(
+    argv.token,
+    argv.owner,
+    argv.expireIn,
+    argv.onlyPrefix,
+    argv.nexceptPrefix,
+  );
+  core.setOutput('deleted-artifacts', JSON.stringify(deletedArtifacts));
 };
 
 if (process.env.GITHUB_ACTION) {
