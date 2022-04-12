@@ -1,6 +1,6 @@
 {
   "name": "@kungfu-trader/action-purge-artifacts",
-  "version": "1.0.0-alpha.3",
+  "version": "1.0.0",
   "main": "dist/index.js",
   "repository": "https://github.com/kungfu-trader/action-purge-artifacts",
   "author": "Keren Dong",
