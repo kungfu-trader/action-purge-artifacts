@@ -90,7 +90,7 @@ exports.purgeArtifacts = async function (token, owner, expireIn, onlyPrefix, exc
       if (shouldDelete(artifact, expireIn, onlyPrefix, exceptPrefix)) {
         console.log(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
         if (!purgeOpts.dry) {
-          await octokit.actions.deleteArtifact({
+          await octokit.rest.actions.deleteArtifact({
             owner: owner,
             repo: repository.name,
             artifact_id: artifact.id,
@@ -8806,17 +8806,20 @@ const core = __nccwpck_require__(2186);
 const github = __nccwpck_require__(5438);
 
 const main = async function () {
-  const context = github.context;
-  const token = core.getInput('token');
-  const expireIn = core.getInput('expire-in');
-  const onlyPrefix = core.getInput('onlyPrefix', { required: false });
-  const exceptPrefix = core.getInput('exceptPrefix', { required: false });
+  const repo = github.context.repo;
+  const argv = {
+    token: core.getInput('token'),
+    owner: repo.owner,
+    expireIn: core.getInput('expire-in'),
+    onlyPrefix: core.getInput('only-prefix', { required: false }),
+    exceptPrefix: core.getInput('except-prefix', { required: false }),
+  };
   const deletedArtifacts = await lib.purgeArtifacts(
     argv.token,
     argv.owner,
     argv.expireIn,
     argv.onlyPrefix,
-    argv.nexceptPrefix,
+    argv.exceptPrefix,
   );
   core.setOutput('deleted-artifacts', JSON.stringify(deletedArtifacts));
 };
