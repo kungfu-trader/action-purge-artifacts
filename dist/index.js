@@ -8811,8 +8811,8 @@ const main = async function () {
     token: core.getInput('token'),
     owner: repo.owner,
     expireIn: core.getInput('expire-in'),
-    onlyPrefix: core.getInput('onlyPrefix', { required: false }),
-    exceptPrefix: core.getInput('exceptPrefix', { required: false }),
+    onlyPrefix: core.getInput('only-prefix', { required: false }),
+    exceptPrefix: core.getInput('except-prefix', { required: false }),
   };
   const deletedArtifacts = await lib.purgeArtifacts(
     argv.token,
