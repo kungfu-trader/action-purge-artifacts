@@ -8806,17 +8806,20 @@ const core = __nccwpck_require__(2186);
 const github = __nccwpck_require__(5438);
 
 const main = async function () {
-  const context = github.context;
-  const token = core.getInput('token');
-  const expireIn = core.getInput('expire-in');
-  const onlyPrefix = core.getInput('onlyPrefix', { required: false });
-  const exceptPrefix = core.getInput('exceptPrefix', { required: false });
+  const repo = github.context.repo;
+  const argv = {
+    token: core.getInput('token'),
+    owner: repo.owner,
+    expireIn: core.getInput('expire-in'),
+    onlyPrefix: core.getInput('onlyPrefix', { required: false }),
+    exceptPrefix: core.getInput('exceptPrefix', { required: false }),
+  };
   const deletedArtifacts = await lib.purgeArtifacts(
     argv.token,
     argv.owner,
     argv.expireIn,
     argv.onlyPrefix,
-    argv.nexceptPrefix,
+    argv.exceptPrefix,
   );
   core.setOutput('deleted-artifacts', JSON.stringify(deletedArtifacts));
 };
