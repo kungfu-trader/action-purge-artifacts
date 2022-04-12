@@ -84,7 +84,7 @@ exports.purgeArtifacts = async function (token, owner, expireIn, onlyPrefix, exc
       if (shouldDelete(artifact, expireIn, onlyPrefix, exceptPrefix)) {
         console.log(`Deleting artifact:\n${JSON.stringify(artifact, null, 2)}`);
         if (!purgeOpts.dry) {
-          await octokit.actions.deleteArtifact({
+          await octokit.rest.actions.deleteArtifact({
             owner: owner,
             repo: repository.name,
             artifact_id: artifact.id,
