@@ -10,6 +10,7 @@ on:
 jobs:
   try:
     uses: kungfu-trader/workflows/.github/workflows/.release-verify.yml@v1
+    with:
       prebuild: false
   
   verify:
