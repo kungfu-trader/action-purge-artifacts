@@ -15,8 +15,7 @@ function shouldDelete(artifact, expireIn, onlyPrefix, exceptPrefix) {
   const excluded = exceptPrefix && artifact.name.startsWith(exceptPrefix);
   const expired = differenceInMilliseconds(new Date(), new Date(artifact.created_at)) >= expireInMs;
 
-  return included &&
-    !excluded && expired;
+  return included && !excluded && expired;
 }
 
 async function* eachArtifact(octokit, owner, repo) {
